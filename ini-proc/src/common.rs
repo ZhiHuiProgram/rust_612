@@ -1,0 +1,1 @@
+pub const FW_VERSION: &str = "A612LV-1-V1_0_0-251020";

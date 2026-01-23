@@ -3,7 +3,7 @@ mod storage;
 mod common;
 use config::ini_parse::ini_init_config;
 
-const INI_FILENAME: &str = "mc6357.ini";
+const INI_FILENAME: &str = "/config/mc6357.ini";
 
 fn main() {
     let ret = ini_init_config(INI_FILENAME);

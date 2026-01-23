@@ -1,6 +1,6 @@
 [build]
-target = "arm-unknown-linux-musleabihf"
+target = "arm-unknown-linux-gnueabihf"
 
-[target.arm-unknown-linux-musleabihf]
-linker = "arm-fhva12c-linux-uclibcgnueabihf-gcc"
-ar = "arm-fhva12c-linux-uclibcgnueabihf-ar"
+[target.arm-unknown-linux-gnueabihf]
+linker = "arm-buildroot-linux-gnueabihf-gcc"
+ar = "arm-buildroot-linux-gnueabihf-ar"

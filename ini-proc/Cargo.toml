@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 fs4 = "0.13.1"
-nix = "0.31.1"
+nix = { version = "0.31.1", features = ["fs"] }
 rust-ini = "0.21.3"

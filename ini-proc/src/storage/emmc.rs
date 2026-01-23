@@ -11,6 +11,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use nix::libc::{c_char, statvfs};
+use std::ffi::CString;
+use std::mem::MaybeUninit;
+
 const VIDEO_DEVICE_MAX_COUNT: usize = 4;
 const MOUNT_RETRY_WAIT: u64 = 3;
 static EMMC: OnceLock<RwLock<Emmc>> = OnceLock::new();
@@ -60,7 +64,7 @@ pub fn emmc_init() -> Option<i32> {
     let mntpoint = ini_parse::ini_get_ini_config("system", "emmcdevmnt")?;
     let eventsdir = ini_parse::ini_get_ini_config("system", "emmceventsdir")?;
     let recorddir = ini_parse::ini_get_ini_config("system", "emmcrecorddir")?;
-    
+
     let emmc: Emmc = Emmc {
         inner: EmmcStatus {
             mount_status: false,
@@ -108,8 +112,8 @@ fn _none_emmc_get_config() -> Option<EmmcAttributes> {
 }
 
 pub fn emmc_get_events_path() -> Option<String> {
-        emmc_update_info();
-
+    let cc = emmc_update_info();
+    println!("{:?}", cc);
     let emmc = EMMC.get()?.read().ok()?;
     if emmc.inner.mount_status == false {
         Some(emmc.attributes.tmp_events_dir.clone())
@@ -214,12 +218,38 @@ pub(crate) fn emmc_delete_oldest_file(path: &Path) -> Result<(), std::io::Error>
 
 pub(crate) fn emmc_update_info() -> Option<i32> {
     let emmc = EMMC.get()?.read().ok()?;
-
-    let stat = fs4::statvfs(&emmc.attributes.emmc_mntpoint).ok()?;
+    let stat = match fs4::statvfs(&emmc.attributes.emmc_mntpoint) {
+        Ok(ss) => ss,
+        Err(err) => {
+            println!(
+                "file path:{:?}  ,err:{:?}",
+                &emmc.attributes.emmc_mntpoint, err
+            );
+            return None;
+        }
+    };
     let available = stat.free_space();
     let total = stat.total_space();
-    
-    println!("available:{:?}, tatal:{:?}",available, total);
+
+    let stat =
+        nix::sys::statvfs::statvfs(Path::new(&emmc.attributes.emmc_mntpoint)).map_err(|e| {
+            // update_emmc_status(0, 1, 0, 0, 0);
+            -1
+        }).ok()?;
+
+    let total = (stat.blocks() as u64 * stat.block_size() as u64) / 1024;
+    let avail = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
+    let used = total - avail;
+    let readonly = if stat.flags().contains(nix::sys::statvfs::FsFlags::ST_RDONLY) {
+        1
+    } else {
+        0
+    };
+    println!(
+        "available:{:?}, tatal:{:?}, readonly:{:?}",
+        available, total, readonly
+    );
+    println!("available:{:?}, tatal:{:?}", available, total);
     Some(0)
 }
 

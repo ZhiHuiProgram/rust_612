@@ -1,5 +1,4 @@
 use crate::config::ini_parse;
-use fs4;
 use std::{
     fs,
     io::ErrorKind,
@@ -11,12 +10,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use nix::libc::{c_char, statvfs};
-use std::ffi::CString;
-use std::mem::MaybeUninit;
+use nix::sys::{statvfs, statvfs::statvfs};
 
 const VIDEO_DEVICE_MAX_COUNT: usize = 4;
 const MOUNT_RETRY_WAIT: u64 = 3;
+const LOW_SPACE_THRESHOLD: u64 = 1024 * 1024 * 512;
 static EMMC: OnceLock<RwLock<Emmc>> = OnceLock::new();
 static EMMC_CTRL: OnceLock<EmmcCheckCtrl> = OnceLock::new();
 static EMMC_THREAD_QUIT: AtomicUsize = AtomicUsize::new(0);
@@ -141,11 +139,11 @@ pub fn emmc_get_recoder_path(chn: usize) -> Option<String> {
         ))
     }
 }
-pub(crate) fn emmc_update_status(state: EmmcStatus) -> Option<i32> {
-    let mut emmc = EMMC.get()?.write().ok()?;
-    emmc.inner = state;
-    Some(0)
-}
+// pub(crate) fn emmc_update_status(state: EmmcStatus) -> Option<i32> {
+//     let mut emmc = EMMC.get()?.write().ok()?;
+//     emmc.inner = state;
+//     Some(0)
+// }
 
 pub fn emmc_get_mount_status() -> Option<bool> {
     Some(EMMC.get()?.read().ok()?.inner.mount_status)
@@ -217,8 +215,8 @@ pub(crate) fn emmc_delete_oldest_file(path: &Path) -> Result<(), std::io::Error>
 }
 
 pub(crate) fn emmc_update_info() -> Option<i32> {
-    let emmc = EMMC.get()?.read().ok()?;
-    let stat = match fs4::statvfs(&emmc.attributes.emmc_mntpoint) {
+    let mut emmc = EMMC.get()?.write().ok()?;
+    let stat = match statvfs(Path::new(&emmc.attributes.emmc_mntpoint)) {
         Ok(ss) => ss,
         Err(err) => {
             println!(
@@ -228,30 +226,24 @@ pub(crate) fn emmc_update_info() -> Option<i32> {
             return None;
         }
     };
-    let available = stat.free_space();
-    let total = stat.total_space();
 
-    let stat =
-        nix::sys::statvfs::statvfs(Path::new(&emmc.attributes.emmc_mntpoint)).map_err(|e| {
-            // update_emmc_status(0, 1, 0, 0, 0);
-            -1
-        }).ok()?;
-
-    let total = (stat.blocks() as u64 * stat.block_size() as u64) / 1024;
-    let avail = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
-    let used = total - avail;
-    let readonly = if stat.flags().contains(nix::sys::statvfs::FsFlags::ST_RDONLY) {
-        1
+    emmc.inner.mount_status = true;
+    emmc.inner.is_read_only = if stat.flags().contains(statvfs::FsFlags::ST_RDONLY) {
+        true
     } else {
-        0
+        false
     };
-    println!(
-        "available:{:?}, tatal:{:?}, readonly:{:?}",
-        available, total, readonly
-    );
-    println!("available:{:?}, tatal:{:?}", available, total);
-    Some(0)
+    emmc.inner.total_size = (stat.blocks() as u64 * stat.block_size() as u64) / 1024;
+    emmc.inner.free_size = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
+    emmc.inner.used_size = emmc.inner.total_size - emmc.inner.free_size;
+
+    if emmc.inner.total_size <= LOW_SPACE_THRESHOLD{
+        println!("Low space detected (< {}KB), deleting oldest files...", LOW_SPACE_THRESHOLD);
+        let _ = emmc_delete_oldest_file(Path::new(&emmc.attributes.emmc_mntpoint));
+    }
+    Some(emmc.inner.is_read_only as i32)
 }
+
 
 #[cfg(test)]
 mod tests {

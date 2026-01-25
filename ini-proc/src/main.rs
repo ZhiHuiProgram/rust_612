@@ -2,7 +2,7 @@ mod config;
 mod storage;
 mod common;
 use config::ini_parse::ini_init_config;
-
+use storage::emmc::*;
 const INI_FILENAME: &str = "/config/mc6357.ini";
 
 fn main() {
@@ -13,5 +13,7 @@ fn main() {
     println!("emmc get event: {:?}", storage::emmc::emmc_get_events_path());
     println!("emmc get recoder: {:?}", storage::emmc::emmc_get_recoder_path(1));
     println!("emmc get info: {:?}", storage::emmc::emmc_get_info());
+
+    emmc_check_start();
 }
 

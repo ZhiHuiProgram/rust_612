@@ -10,7 +10,13 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use nix::sys::{statvfs, statvfs::statvfs};
+use nix::{
+    libc::free,
+    sys::{
+        statfs,
+        statvfs::{self, statvfs},
+    },
+};
 
 const VIDEO_DEVICE_MAX_COUNT: usize = 4;
 const MOUNT_RETRY_WAIT: u64 = 3;
@@ -110,8 +116,6 @@ fn _none_emmc_get_config() -> Option<EmmcAttributes> {
 }
 
 pub fn emmc_get_events_path() -> Option<String> {
-    let cc = emmc_update_info();
-    println!("{:?}", cc);
     let emmc = EMMC.get()?.read().ok()?;
     if emmc.inner.mount_status == false {
         Some(emmc.attributes.tmp_events_dir.clone())
@@ -214,37 +218,80 @@ pub(crate) fn emmc_delete_oldest_file(path: &Path) -> Result<(), std::io::Error>
     Ok(())
 }
 
-pub(crate) fn emmc_update_info() -> Option<i32> {
-    let mut emmc = EMMC.get()?.write().ok()?;
-    let stat = match statvfs(Path::new(&emmc.attributes.emmc_mntpoint)) {
+pub(crate) fn emmc_update_info() -> Option<bool> {
+    let mount_point = {
+        let emmc = EMMC.get()?.read().ok()?;
+        emmc.attributes.emmc_mntpoint.clone()
+    };
+
+    let stat = match statvfs(Path::new(&mount_point)) {
         Ok(ss) => ss,
         Err(err) => {
-            println!(
-                "file path:{:?}  ,err:{:?}",
-                &emmc.attributes.emmc_mntpoint, err
-            );
+            println!("file path:{:?}  ,err:{:?}", mount_point, err);
             return None;
         }
     };
 
-    emmc.inner.mount_status = true;
-    emmc.inner.is_read_only = if stat.flags().contains(statvfs::FsFlags::ST_RDONLY) {
+    let mount_status = true;
+    let is_read_only = if stat.flags().contains(statvfs::FsFlags::ST_RDONLY) {
         true
     } else {
         false
     };
-    emmc.inner.total_size = (stat.blocks() as u64 * stat.block_size() as u64) / 1024;
-    emmc.inner.free_size = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
-    emmc.inner.used_size = emmc.inner.total_size - emmc.inner.free_size;
+    let total_size = (stat.blocks() as u64 * stat.block_size() as u64) / 1024;
+    let free_size = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
+    let used_size = total_size - free_size;
 
-    if emmc.inner.total_size <= LOW_SPACE_THRESHOLD{
-        println!("Low space detected (< {}KB), deleting oldest files...", LOW_SPACE_THRESHOLD);
-        let _ = emmc_delete_oldest_file(Path::new(&emmc.attributes.emmc_mntpoint));
+    if total_size <= LOW_SPACE_THRESHOLD {
+        println!(
+            "Low space detected (< {}KB), deleting oldest files...",
+            LOW_SPACE_THRESHOLD
+        );
+        let _ = emmc_delete_oldest_file(Path::new(&mount_point));
     }
-    Some(emmc.inner.is_read_only as i32)
+    {
+        let mut emmc = EMMC.get()?.write().ok()?;
+        emmc.inner.free_size = free_size;
+        emmc.inner.is_read_only = is_read_only;
+        emmc.inner.mount_status = mount_status;
+        emmc.inner.total_size = total_size;
+        emmc.inner.used_size = used_size;
+    };
+    Some(is_read_only)
 }
 
+pub(crate) fn emmc_mounted_status() -> Option<bool> {
+    let (device, mount_point) = {
+        let emmc = match EMMC.get()?.read() {
+            Ok(e) => e,
+            Err(_) => {
+                eprintln!("EMMC lock poisoned");
+                return None;
+            }
+        };
+        (
+            emmc.attributes.emmc_devname.clone(),
+            emmc.attributes.emmc_mntpoint.clone(),
+        )
+    };
+    match fs::read_to_string("/proc/mounts") {
+        Ok(content) => Some(content.lines().any(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            parts.len() >= 2 
+                && parts[0] == device 
+                && parts[1] == mount_point
+        })),
+        Err(e) => {
+            eprintln!("Failed to read /proc/mounts: {}", e);
+            None
+        }
+    }
+}
 
+pub fn emmc_check_start() {
+    emmc_update_info();
+    println!("{:?}",emmc_mounted_status());
+}
 #[cfg(test)]
 mod tests {
     use super::*;

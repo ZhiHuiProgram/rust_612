@@ -5,5 +5,6 @@ pub use emmc::{
     emmc_get_events_path,
     emmc_get_recoder_path,
     emmc_get_mount_status,
-    emmc_get_info,    
+    emmc_get_info,
     };
+pub use emmc::*;

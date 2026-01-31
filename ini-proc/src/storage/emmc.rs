@@ -1,4 +1,5 @@
 use crate::config::ini_parse;
+use anyhow::{Context, Result, anyhow};
 use std::{
     fs,
     io::ErrorKind,
@@ -7,6 +8,7 @@ use std::{
         Condvar, Mutex, OnceLock, RwLock,
         atomic::{AtomicUsize, Ordering},
     },
+    thread,
     time::{Duration, SystemTime},
 };
 
@@ -20,7 +22,8 @@ use nix::{
 
 const VIDEO_DEVICE_MAX_COUNT: usize = 4;
 const MOUNT_RETRY_WAIT: u64 = 3;
-const LOW_SPACE_THRESHOLD: u64 = 1024 * 1024 * 512;
+const LOW_SPACE_THRESHOLD_KB: u64 = 1024 * 512;
+const EMMC_TMP_DIR: &str = "/tmp/events";
 static EMMC: OnceLock<RwLock<Emmc>> = OnceLock::new();
 static EMMC_CTRL: OnceLock<EmmcCheckCtrl> = OnceLock::new();
 static EMMC_THREAD_QUIT: AtomicUsize = AtomicUsize::new(0);
@@ -122,7 +125,7 @@ pub fn emmc_get_events_path() -> Option<String> {
     } else {
         Some(format!(
             "{}/{}",
-            emmc.attributes.emmc_mntpoint, &emmc.attributes.emmc_eventsdir
+            &emmc.attributes.emmc_mntpoint, &emmc.attributes.emmc_eventsdir
         ))
     }
 }
@@ -242,10 +245,10 @@ pub(crate) fn emmc_update_info() -> Option<bool> {
     let free_size = (stat.blocks_free() as u64 * stat.block_size() as u64) / 1024;
     let used_size = total_size - free_size;
 
-    if total_size <= LOW_SPACE_THRESHOLD {
+    if total_size <= LOW_SPACE_THRESHOLD_KB {
         println!(
             "Low space detected (< {}KB), deleting oldest files...",
-            LOW_SPACE_THRESHOLD
+            LOW_SPACE_THRESHOLD_KB
         );
         let _ = emmc_delete_oldest_file(Path::new(&mount_point));
     }
@@ -277,9 +280,7 @@ pub(crate) fn emmc_mounted_status() -> Option<bool> {
     match fs::read_to_string("/proc/mounts") {
         Ok(content) => Some(content.lines().any(|line| {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            parts.len() >= 2 
-                && parts[0] == device 
-                && parts[1] == mount_point
+            parts.len() >= 2 && parts[0] == device && parts[1] == mount_point
         })),
         Err(e) => {
             eprintln!("Failed to read /proc/mounts: {}", e);
@@ -288,9 +289,73 @@ pub(crate) fn emmc_mounted_status() -> Option<bool> {
     }
 }
 
+pub(crate) fn safe_mkdir(path: &Path) -> Result<(), std::io::Error> {
+    if !path.exists() {
+        fs::create_dir_all(path)?;
+    }
+    Ok(())
+}
+pub(crate) fn emmc_create_tmp_events_dirs() {
+    match safe_mkdir(Path::new(EMMC_TMP_DIR)) {
+        Ok(_) => {
+            println!("Create emmc tmp dir success")
+        }
+        Err(err) => {
+            eprintln!("Failed to create emmc tmp dir: {}", err);
+        }
+    };
+}
+
+pub(crate) fn emmc_create_mount_dirs() -> Result<()> {
+    let emmc = EMMC
+        .get()
+        .context("EMMC not initialized")?
+        .read()
+        .map_err(|e| anyhow!("Failed to acquire EMMC lock: {:?}", e))?;
+    let dirs = [
+        format!(
+            "{}/{}",
+            &emmc.attributes.emmc_mntpoint, &emmc.attributes.emmc_eventsdir
+        ),
+        format!(
+            "{}/{}",
+            &emmc.attributes.emmc_mntpoint, &emmc.attributes.emmc_recorddir
+        ),
+        format!("{}/{}", &emmc.attributes.emmc_mntpoint, "log"),
+    ];
+    for dir in &dirs {
+        safe_mkdir(Path::new(&dir)).with_context(|| format!("Create dir {} failed", dir))?;
+    }
+    for chn in 0..VIDEO_DEVICE_MAX_COUNT {
+        let record_dir = format!(
+            "{}/{}/{}",
+            &emmc.attributes.emmc_mntpoint,
+            &emmc.attributes.emmc_recorddir,
+            &emmc
+                .attributes
+                .video_device_dir
+                .get(chn)
+                .with_context(|| format!("video_device_dir {} not found", chn))?
+        );
+        safe_mkdir(Path::new(&record_dir))
+            .with_context(|| format!("Create dir {} failed", record_dir))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn emmc_try_mount() -> Result<()> { 
+
+    Ok(())
+}
+
+pub(crate) fn emmc_check_thread() {
+    let check_status = EmmcStateType::Init;
+
+}
 pub fn emmc_check_start() {
     emmc_update_info();
-    println!("{:?}",emmc_mounted_status());
+    thread::spawn(emmc_check_thread);
+    println!("{:?}", emmc_mounted_status());
 }
 #[cfg(test)]
 mod tests {

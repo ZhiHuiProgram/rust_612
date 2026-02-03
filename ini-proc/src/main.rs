@@ -20,8 +20,8 @@ fn main() {
 
     thread::sleep(Duration::from_secs(5));
 
-    emmc_check_stop(emmc_handle);
-    // loop {
-    //     thread::sleep(Duration::from_secs(1));
-    // }
+    // emmc_check_stop(emmc_handle);
+    loop {
+        thread::sleep(Duration::from_secs(1));
+    }
 }

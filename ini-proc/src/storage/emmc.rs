@@ -384,7 +384,7 @@ pub(crate) fn emmc_try_mount() -> Result<()> {
         .args(["-f", &emmc.attributes.emmc_mntpoint])
         .status();
     thread::sleep(Duration::from_millis(500));
-    if emmc.remount_fail_count >= 5 {
+    if emmc.remount_fail_count >= 3 {
         let mut output = Command::new("mkfs.ext4")
             .args(["-F", &emmc.attributes.emmc_devname])
             .stderr(Stdio::piped())

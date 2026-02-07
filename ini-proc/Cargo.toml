@@ -5,8 +5,18 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+backtrace = "0.3.76"
+chrono = "0.4.43"
+libc = "0.2.180"
 nix = { version = "0.31.1", features = ["fs"] }
 rust-ini = "0.21.3"
+tokio = {version = "1" , features = ["rt","rt-multi-thread","macros","signal","sync","fs","net"]}
 
 [profile.release]
-#strip = true 
+#debug = true        # 保留符号，不影响性能
+#opt-level = "z"     # 优化体积
+#lto = true          # 链接时优化
+#strip = false       # 不要strip符号
+
+[profile.dev]
+incremental = true 

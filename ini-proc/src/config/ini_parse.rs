@@ -58,7 +58,8 @@ fn ini_setting_default(ini_filename: &str) -> Option<Ini> {
         .set("emmcrecorddir", "record")
         .set("recorder", "off")
         .set("yolov5s", "off")
-        .set("rtmp_dev", "0");
+        .set("rtmp_dev", "0")
+        .set("coordinate", "1");
 
     conf.with_section(Some("gpiopins"))
         .set("camctlbase", "37")
@@ -78,7 +79,13 @@ fn ini_setting_default(ini_filename: &str) -> Option<Ini> {
         .set("ftp_addr", "sdzt.hhdlink.online:21")
         .set("ftp_path", "/t31")
         .set("ftp_user", "test")
-        .set("ftp_pwd", "hhd@123.com");
+        .set("ftp_pwd", "hhd@123.com")
+        .set("local_ip","192.168.30.214")
+        .set("local_gateway","192.168.30.254")
+        .set("link_type", "ETH")
+        .set("link_mode", "static")
+        .set("tcp_server_ip", "192.168.30.171")
+        .set("tcp_server_port", "8888");
 
     conf.with_section(Some("gb28181"))
         .set("status", "off")

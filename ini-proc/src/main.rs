@@ -6,6 +6,8 @@ use config::ini_parse::ini_init_config;
 use std::thread;
 use std::time::Duration;
 use storage::emmc::*;
+use communication::types::*;
+use communication::protocol::*;
 const INI_FILENAME: &str = "mc6357.ini";
 
 #[tokio::main]
@@ -20,14 +22,18 @@ async fn main() {
     println!("emmc get recoder: {:?}", emmc_get_recoder_path(1));
     println!("emmc get info: {:?}", storage::emmc::emmc_get_info());
 
-    let emmc_handle = emmc_check_start();
+    // let emmc_handle = emmc_check_start();
 
-    // thread::sleep(Duration::from_secs(5));
 
-    unsafe {
-        println!("[TEST] Write to 0x1");
-        std::ptr::write_volatile(0x1 as *mut u8, 42);
+    match communication::tcp_transport::tcp_server_start().await{
+        Some(_) => {
+            println!("tcp server start ok.");
+        },
+        None => {
+            println!("tcp server start failed.");
+        }
     }
+
 
     // emmc_check_stop(emmc_handle);
     loop {

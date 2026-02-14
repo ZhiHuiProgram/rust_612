@@ -1,3 +1,5 @@
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
@@ -16,7 +18,7 @@ pub enum Direction {
 }
 
 #[repr(u16)] // 对应C的enum大小
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, IntoPrimitive, TryFromPrimitive)]
 pub enum McuComMsgType {
     Unknown = 0,
     HeartBeat = 1,
@@ -33,6 +35,55 @@ pub enum McuComMsgType {
     GpsDataResp = 12,
     Cmd = 13,
     CmdResp = 14,
+}
+
+#[repr(u16)] 
+#[derive(Debug, Clone, Copy, PartialEq, IntoPrimitive, TryFromPrimitive)]
+pub enum CmdType {
+    Unknown = 0,
+    RemoteCapture,                    // 拍照指令
+    RemoteCaptureResp,                // 拍照指令应答
+    VideoTape,                        // 拍视频
+    VideoTapeResp,                    // 拍视频指令应答
+    RetransmissionDocument,           // 照片/视频文件补传指令
+    RetransmissionDocumentResp,       // 照片/视频文件补传应答指令
+    OpenRtmpMode,                     // 开启RTMP推流指令
+    OpenRtmpModeResp,                 // 开启RTMP推流指令应答
+    CloseRtmpMode,                    // 关闭RTMP推流指令
+    CloseRtmpModeResp,                // 关闭RTMP推流指令应答
+    Config28181,                      // 配置28181参数
+    Config28181Resp,                  // 配置28181参数应答
+    DeepSleep,                        // 深度休眠指令
+    DeepSleepResp,                    // 深度休眠指令应答
+    Reserved1,                        // 预留指令1
+    Reserved1Resp,                    // 预留指令1应答
+    Reserved2,                        // 预留指令2
+    Reserved2Resp,                    // 预留指令2应答
+    ClearTfCardFiles,                 // 清除所有录像文件/照片/短视频指令
+    ClearTfCardFilesResp,             // 所有录像文件/照片/短视频指令应答
+    HeartBeat,                        // 心跳指令
+    HeartBeatResp,                    // 心跳指令应答
+    Ota,                              // OTA指令
+    OtaResp,                          // OTA指令应答
+    Version,                          // 版本号查询指令
+    VersionResp,                      // 版本号查询指令应答
+    SetTime,                          // 校时指令
+    SetTimeResp,                      // 校时指令应答
+    VideoOn,                          // 录像开启指令
+    VideoOnResp,                      // 录像开启指令应答
+    VideoOff,                         // 录像关闭指令
+    VideoOffResp,                     // 录像关闭指令应答
+    SetFlip,                          // 设置摄像头图像翻转
+    SetFlipResp,                      // 设置摄像头图像翻转应答
+    SetCarCode,                       // 设置OSD车牌号
+    SetCarCodeResp,                   // 设置OSD车牌号应答
+    SetIp,                            // 设置IP地址与上网方式
+    SetIpResp,                        // 设置IP地址应答
+    SetSockIpPort,                    // 设置Socket端口
+    SetSockIpPortResp,                // 设置Socket端口应答
+    SetCoordinate,                    // 设置坐标
+    SetCoordinateResp,                // 设置坐标应答
+    MaxCount,
 }
 
 #[repr(C)]
@@ -71,6 +122,14 @@ impl McuComPackage {
     }
     pub fn bytes_to_struct<T>(data: &[u8]) -> T {
         unsafe { std::ptr::read(data.as_ptr() as *const T) }
+    }
+    pub fn struct_to_bytes<T>(data: &T) -> Vec<u8> {
+        unsafe {
+            let size = std::mem::size_of::<T>();
+            let ptr = data as *const T as *const u8;
+            let slice = std::slice::from_raw_parts(ptr, size);
+            return slice.to_vec();
+        }
     }
 }
 #[repr(C)]
